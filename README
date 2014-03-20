@@ -1,0 +1,5 @@
+Module:
+	Modules is called with 2 args and must be initialized with a function called run.
+	Example: .run(IP, MAC)
+
+

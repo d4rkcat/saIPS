@@ -1,8 +1,32 @@
-import threading, Queue, logging, subprocess, time
+# -*- coding: utf-8 -*-
+import threading, Queue, logging, imp
+import subprocess, shlex, time, os, sys
 logging.getLogger("scapy.runtime").setLevel(logging.ERROR)
 from scapy.all import *
 
+trolldir = 'troll_module/'
+sys.path.append(trolldir)
+troll_modules = next(os.walk(trolldir))[2]
+trolls = []
 
+for troll in troll_modules:
+    if troll.endswith('.py'):
+        trollbridge = os.path.join(trolldir, troll)
+        mod = imp.load_source('trollmod', trollbridge)
+        trolls.append(mod)
+        
+
+#trolls[0].run('FUCK YOU')  
+deathdir = 'death_module/'
+sys.path.append(deathdir)
+deaths = []  
+death_modules = next(os.walk(deathdir))[2]
+
+for death in death_modules:
+    if death.endswith('.py'):
+        deathsdoor = os.path.join(deathdir, death)
+        mod = imp.load_source('deathmod', deathsdoor)
+        deaths.append(mod)
 
 
 '''
@@ -31,7 +55,18 @@ interface = interfaces[input('\nInput: ')-1]
 
 del interfaces, nr
 
+p = subprocess.Popen(shlex.split('ifconfig %s' % interface), stdout=subprocess.PIPE)
+while True:
+    line = p.stdout.readline()
+    if line != '':
+        if line.find('inet addr:') != -1:
+            whitelist_ip = str(line.split(' Bcast:')[0]).split(':')[1]
+    else:
+        break
 
+if not whitelist_ip:
+    print '[!] Couldn\'t find your IP by running \'ifconfig %s\'. WTF is wrong with you? Quitting' % interface
+    quit()
 
 
 # ----------------------------------------------------------------
@@ -60,6 +95,7 @@ class DHCP_SCAN(threading.Thread):
         intruder = []
         new_intruder = False
         source = resp[Ether].src
+        
         try:
             for opt in resp[DHCP].options:
                 if opt == 'end' or opt == 'pad':
@@ -128,7 +164,6 @@ while True:
 
 
 while True:
-    
     if not queue.empty():
         val = queue.get()
         if len(val) == 4 :
