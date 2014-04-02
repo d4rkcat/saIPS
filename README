@@ -1,5 +1,15 @@
 Module:
-	Modules is called with 2 args and must be initialized with a function called run.
-	Example: .run(IP, MAC)
+Modules are initialized by the function run(arg). The arg is a string containing mac-ip
+Example: .run(arg)
+
+
+
+
+Troll modules:
+Supposed to only 'troll' the host until they give up. Upside down internet etc
+
+
+Death modules:
+Supposed to be more malicious than the troll modules.
 
 
