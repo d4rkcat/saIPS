@@ -211,7 +211,7 @@ def checklist(whitelist, intruder):
       
 def build_whitelist():
     whitelist = []
-    f = open('whitelist.lst', 'r')  #  Format in whitelist.lst = 127.0.0.1:MAC
+    f = open('whitelist.lst', 'r')  #  Format in whitelist.lst = ff:ff:ff:ff:ff:ff-127.0.0.1
     for line in f.readlines():
         whitelist.append(line.strip('\n'))
     if not whitelist:
@@ -236,14 +236,13 @@ def findgateway():
 
 
 
-# Build whitelist to check IP:MAC towards
+# Build whitelist to check MAC:IP towards
 
 alive_intruders = []
 whitelist = build_whitelist()
 gateway = findgateway()
 
-subnetmask = lookup(gateway)
-subnetmask = gateway+subnetmask
+subnetmask = gateway+lookup(gateway)
 
 print '[+] Starting ARP ping and ping scan [%s]' % subnetmask
 
@@ -286,14 +285,6 @@ while True:
     else:
         break
 
-'''        
-print 'example victim'
-#example victim
-thread = victim('FUCK')
-thread.daemon = True
-thread.start()
-'''
-
 while True:
     try:
         thread = DHCP_SCAN(queue, interface)
@@ -304,8 +295,10 @@ while True:
     time.sleep(1)         # i know, i know
     if thread.isAlive():
         break
-    
-    
+
+print '[+] Removing whitelisted hosts'
+alive_intruders = list(set(alive_intruders) - set(whitelist))
+   
 while True:
     if not queue.empty():
         val = queue.get()
@@ -321,4 +314,3 @@ while True:
         thread.daemon = True
         thread.start()        
         alive_intruders.pop()
-                
