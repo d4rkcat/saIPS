@@ -2,12 +2,13 @@
 # -*- coding: utf-8 -*-
 # Coded by Sam (info@sam3.se)
 
-import threading, Queue, logging, imp
+import threading, Queue, logging, imp, nmap
 import subprocess, shlex, time, os, sys
 logging.getLogger("scapy.runtime").setLevel(logging.ERROR)
 from scapy.all import *
 from struct import *
 from socket import *
+from random import randint
 
 
 '''
@@ -29,7 +30,6 @@ for troll in troll_modules:
 
 print '[+] Loaded %s troll module(s)' % troll_count    
 
-#trolls[0].run('FUCK YOU')  
 deathdir = 'death_module/'
 sys.path.append(deathdir)
 deaths = []  
@@ -106,12 +106,36 @@ def lookup(ip): # from stackoverflow. cant remember url :(
     quit()
 
 
+class Scan_Hosts(threading.Thread):
+    def __init__(self, queue, output):
+        threading.Thread.__init__(self)
+        self.queue=queue
+        self.output=output
+    def run(self):
+        self.host=self.queue.get()
+        ip = pingandarp(self.host)
+        if ip:
+            self.output.put(ip)
+        self.queue.task_done()
 
+def pingandarp(ip):
+    while True:
+        os.system('ping %s -c 1 > /dev/null' % ip)
+        p = subprocess.Popen('arp -a %s' % ip, shell=True, stdout=subprocess.PIPE)
+        while True:
+            line = p.stdout.readline()
+            if line != '':
+                if line.find('(%s) at' % ip) != -1 and line.find('at <incomplete> on') == -1:
+                    return '%s-%s' % (line.split(' [')[0].split('at ')[1], line.split(')')[0].split('(')[1])
+                else:
+                    return 'DEAD HOST'                
+            else:
+                break     
+    
 '''
 DHCP intruder thread
 Scan and put list of new intruder in queue
 '''
-
 
 queue = Queue.Queue()
 class DHCP_SCAN(threading.Thread):
@@ -147,26 +171,39 @@ class DHCP_SCAN(threading.Thread):
 # ----------------------------------------------------------------
 
 class victim(threading.Thread):           # This needs massive werk
-    def __init__ (self, q, victim):
-        self.q = q
+    def __init__ (self, victim):
+        self.ip = victim.split('-')[1]
+        self.mac = victim.split('-')[0]
         self.victim = victim
+        self.alive = True
         threading.Thread.__init__ (self)    
     def run(self):
-        print 'Do something with: ',
-        print self.victim
-        print len(trolls)
-        trolls[0].run(self.victim)
-    
-    def attack(self):
-        pass
+        while True:
+            i = randint(1,2)
+            if i == 1:  #troll
+                self.attack(1, randint(0, troll_count-1))
+                
+            elif i == 2:  #death
+                self.attack(2, randint(0, death_count-1))
+                
+            client = pingandarp(self.ip)
+            if client == 'DEAD HOST':
+                print '[+] %s is dead. Stopping attacks on that host.' % self.ip
+                break
         
-    
+    def attack(self, i, nr):
+        if i == 1:
+            trolls[nr].run(self.victim)
+        if i == 2:
+            deaths[nr].run(self.victim)
+            
+        
+            
     
 def checklist(whitelist, intruder):
     for credentials in whitelist:
         w_ip = credentials.split('-')[0]
         w_mac = credentials.split('-')[1]
-        #if w_ip.find(intruder[1]) != -1 and w_mac.find(intruder[0]) != -1:
         if credentials.split('-')[0].find(intruder[1]) != -1 and credentials.split('-')[1].find(intruder[0]) != -1:
             return True
     return False
@@ -174,7 +211,7 @@ def checklist(whitelist, intruder):
       
 def build_whitelist():
     whitelist = []
-    f = open('whitelist.lst', 'r')  #   127.0.0.1:MAC
+    f = open('whitelist.lst', 'r')  #  Format in whitelist.lst = 127.0.0.1:MAC
     for line in f.readlines():
         whitelist.append(line.strip('\n'))
     if not whitelist:
@@ -185,9 +222,7 @@ def build_whitelist():
 
 
 def findgateway():
-    proc = subprocess.Popen(
-        'route -n | grep \'UG[ \t]\' | awk \'{print $2}\'', 
-        stdout=subprocess.PIPE, shell=True)
+    proc = subprocess.Popen('route -n | grep \'UG[ \t]\' | awk \'{print $2}\'', stdout=subprocess.PIPE, shell=True)
     while True:
         line = proc.stdout.readline()
         if line != '':
@@ -210,31 +245,54 @@ gateway = findgateway()
 subnetmask = lookup(gateway)
 subnetmask = gateway+subnetmask
 
-print '[+] Starting ARP ping scan [%s]' % subnetmask
+print '[+] Starting ARP ping and ping scan [%s]' % subnetmask
 
 
 
 # Start arp ping scan and append intruders to list
-conf.verb=0
-ans,unans=srp(Ether(dst="ff:ff:ff:ff:ff:ff")/ARP(pdst=subnetmask), timeout=3)
 
-for snd,rcv in ans:
-    mac = rcv.sprintf(r"%Ether.src%")
-    ip = rcv.sprintf(r"%ARP.psrc%")
-    if  ip != gateway:
-        print mac, ip # remove this later on
-        alive_intruders.append('%s-%s' % (mac, ip))
+output = Queue.Queue()
+hosts = []
+nm = nmap.PortScanner() 
+nm.scan(hosts=subnetmask, arguments='-n -sn --send-ip')
+hosts_list = [(x, nm[x]['status']['state']) for x in nm.all_hosts()]
+for host, status in hosts_list:
+    if not host == whitelist_ip and host != gateway:
+        hosts.append(host)
 
+nm.scan(hosts=subnetmask, arguments='-n -sP -PE -PA21,23,80,3389')
+hosts_list = [(x, nm[x]['status']['state']) for x in nm.all_hosts()]
+for host, status in hosts_list:
+    if not host == whitelist_ip and host != gateway:
+        hosts.append(host)
         
-'''
-example victim
-thread = victim(queue, 'FUCK')
+
+hosts = set(list(hosts))
+for i in range(len(hosts)):
+    t=Scan_Hosts(queue, output)
+    t.setDaemon(True)
+    t.start()
+    
+for host in hosts:
+    queue.put(host.strip())
+    queue.join()
+        
+print '[+] Scan done'   
+while True:
+    if not output.empty():
+        val = output.get()
+        print '[-] Found host: ' + str(val)
+        alive_intruders.append('%s' % val)
+    else:
+        break
+
+'''        
+print 'example victim'
+#example victim
+thread = victim('FUCK')
 thread.daemon = True
 thread.start()
 '''
-
-
-
 
 while True:
     try:
@@ -257,10 +315,10 @@ while True:
             else:
                 print '\n----------------------------\nIntruder alert!\nSource MAC: %s\nIP: %s\nClass Id: %s\nHostname: %s' % ( val[0], val[1], val[2], val[3] )
                 alive_intruders.append('%s-%s' % (val[0] , val[1]))
-                
-    #if alive_intruders:
-     #   print 'Do something nasty with intruders here'
-                
     
-  
-    
+    if len(alive_intruders) != 0:
+        thread = victim(alive_intruders[-1])
+        thread.daemon = True
+        thread.start()        
+        alive_intruders.pop()
+                
