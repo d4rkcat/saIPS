@@ -190,11 +190,13 @@ class victim(threading.Thread):           # This needs massive werk
             if client == 'DEAD HOST':
                 print '[+] %s is dead. Stopping attacks on that host.' % self.ip
                 break
-        
+            
     def attack(self, i, nr):
         if i == 1:
+            print '[+] Starting troll attack (%s) on %s' % (trolls[nr].getname(), self.ip)
             trolls[nr].run(self.victim)
         if i == 2:
+            print '[+] Starting death attack (%s) on %s' % (deaths[nr].getname(), self.ip)
             deaths[nr].run(self.victim)
             
         
@@ -204,16 +206,16 @@ def checklist(whitelist, intruder):
     for credentials in whitelist:
         w_ip = credentials.split('-')[0]
         w_mac = credentials.split('-')[1]
-        if credentials.split('-')[0].find(intruder[1]) != -1 and credentials.split('-')[1].find(intruder[0]) != -1:
+        if credentials.split('-')[0].find(intruder[0]) != -1 and credentials.split('-')[1].find(intruder[1]) != -1:
             return True
     return False
       
       
-def build_whitelist():
+def build_whitelist(gateway):
     whitelist = []
     f = open('whitelist.lst', 'r')  #  Format in whitelist.lst = ff:ff:ff:ff:ff:ff-127.0.0.1
     for line in f.readlines():
-        whitelist.append(line.strip('\n'))
+        whitelist.append(line.strip('\n') + '-' + gateway)
     if not whitelist:
         print '[!] Could not build whitelist. Wtf is wrong with you?'
         quit()
@@ -239,9 +241,8 @@ def findgateway():
 # Build whitelist to check MAC:IP towards
 
 alive_intruders = []
-whitelist = build_whitelist()
 gateway = findgateway()
-
+whitelist = build_whitelist(gateway)
 subnetmask = gateway+lookup(gateway)
 
 print '[+] Starting ARP ping and ping scan [%s]' % subnetmask
@@ -281,7 +282,7 @@ while True:
     if not output.empty():
         val = output.get()
         print '[-] Found host: ' + str(val)
-        alive_intruders.append('%s' % val)
+        alive_intruders.append('%s-%s' % (val, gateway))
     else:
         break
 
@@ -304,13 +305,14 @@ while True:
         val = queue.get()
         if len(val) == 4 :
             if checklist(whitelist, val):
-                print 'Whitelisted client connected %s-%s' % ( val[1], val[0] )
+                print 'Whitelisted client connected [%s-%s]' % ( val[1], val[0] )
             else:
-                print '\n----------------------------\nIntruder alert!\nSource MAC: %s\nIP: %s\nClass Id: %s\nHostname: %s' % ( val[0], val[1], val[2], val[3] )
-                alive_intruders.append('%s-%s' % (val[0] , val[1]))
+                print '\n----------------------------\nIntruder alert!\nSource MAC: %s\nIP: %s\nClass Id: %s\nHostname: %s\n----------------------------\n' % ( val[0], val[1], val[2], val[3] )
+                alive_intruders.append('%s-%s-%s' % (val[0] , val[1], gateway))
     
     if len(alive_intruders) != 0:
         thread = victim(alive_intruders[-1])
         thread.daemon = True
         thread.start()        
         alive_intruders.pop()
+        
