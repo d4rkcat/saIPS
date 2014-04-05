@@ -21,7 +21,7 @@ def run(arg):
         counter += 1
         send(arp, verbose=False)
         sleep(2)
-    sleep(5)
+    
 
 if __name__ == "__main__":
     quit()
